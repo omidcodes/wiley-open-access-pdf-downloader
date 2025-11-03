@@ -1,4 +1,5 @@
 import os
+import hashlib
 
 directory_name = "downloads"
 project_root = os.path.dirname(os.path.abspath(__file__))  # e.g., .../wiley-open-access-pdf-downloader
@@ -34,3 +35,12 @@ def save_pdf(pdf_name: str, pdf_content: bytes, directory_path=directory_path) -
 
     print(f"[LOCAL : PDF saved] {full_path} | size={len(pdf_content)} bytes")
     return full_path
+
+def hashify(input):
+    in_bytes = input.encode('utf-8') 
+    hash_object = hashlib.sha256(in_bytes)
+    # Get the hexadecimal representation of the hash
+    password_hash = hash_object.hexdigest()
+    
+
+    return password_hash

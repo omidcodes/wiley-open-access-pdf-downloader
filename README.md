@@ -1,172 +1,100 @@
-## README.md
-
 # Wiley Open-Access PDF Downloader
 
-Query the **Wiley Online Library SRU** endpoint by keyword(s), filter for **Open Access** items, download the **PDFs locally**, and (optionally) store article metadata in a PostgreSQL table.
+Local-only tool to query the **Wiley Online Library SRU** endpoint by keyword(s), filter **Open Access** results, download the **PDFs to `./downloads/`**, and heuristically extract the principal author/email from the PDF text.
 
-This is a local, AWS-free version of the original Lambda project. It keeps the Wiley SRU logic, PDF parsing (principal author + email heuristic), and optional Postgres insert—but removes AWS Secrets Manager and S3. PDFs are written to your filesystem.
+- ✅ Pure local filesystem output
+- ✅ Pytest unit tests
 
 ---
 
 ## Features
 
-* 🔎 Keyword search via Wiley SRU (with robust headers to avoid 403s)
-* 🧭 Pagination through `nextRecordPosition`
-* ✅ Open-Access filtering
-* 📄 PDF download + first-page extraction of **principal author** and **email** (heuristic)
-* 🗃️ Optional Postgres insert into `web_crawler_journals` via `tiquu_pg/insert_query.py`
-* 💾 Local filesystem output (no AWS)
-
----
-
-## Project Structure (key files)
-
-```
-publishers/
-  wiley_library.py       # SRU fetch, OA filter, PDF download, author/email extraction
-tiquu_pg/
-  config.py              # Local DB config loader (env or db.local.yaml)
-  insert_query.py        # Insert into web_crawler_journals
-  select_query.py        # Duplicate check helpers
-config_utils.py          # Returns api_config (Wiley needs none)
-hash_func.py             # SHA256 helper for hash_value
-run_local.py             # Local entry point (no AWS)
-tests/                   # Pytest tests/mocks
-```
-
-**Removed:** `lambda_function.py`, `crawler_init.py` (AWS Lambda / SSM / Secrets Manager), S3 upload.
+- 🔎 Keyword search via Wiley SRU with browser-like headers (helps reduce 403s)
+- 🧭 Pagination via SRU `nextRecordPosition`
+- ✅ Open-Access filtering
+- 📄 PDF download + simple heuristic extraction of **author name** and **email** from text
+- 💾 Files saved under `./downloads/` at the project root
+- 🧪 Tests that mock network/IO (no real HTTP, no DB)
 
 ---
 
 ## Requirements
 
-* Python 3.9+ (tested with 3.10+ recommended)
-* `pip`/`venv`
-* A local Postgres instance **if** you want DB inserts (optional)
+- Python 3.9+
+- A virtual environment is recommended
 
-Install Python deps:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
-```
-
----
-
-## Configuration
-
-### 1) Downloads folder
-
-By default PDFs are saved under:
-
-```
-./downloads/<PublisherName>/<joined_keywords>/<doi_suffix>.pdf
-```
-
-You can override the root via environment variable:
-
-```bash
-export DOWNLOAD_DIR=/absolute/path/to/downloads
-```
-
-### 2) Database (optional)
-
-If you want metadata inserts into Postgres, configure one of:
-
-* **Environment variables (preferred):**
-
-  ```
-  PGHOST=localhost
-  PGPORT=5432
-  PGDATABASE=your_db
-  PGUSER=your_user
-  PGPASSWORD=your_password
-  ```
-
-* **Or** create `db.local.yaml`:
-
-  ```yaml
-  postgresql:
-    host: localhost
-    port: 5432
-    dbname: your_db
-    user: your_user
-    password: your_password
-  ```
-
-> The loader in `tiquu_pg/config.py` uses env vars first, then `db.local.yaml`.
+````
 
 ---
 
 ## Run locally
 
-Basic run with two keywords:
+Basic run:
 
 ```bash
 python run_local.py --keywords climate action
 ```
 
-Choose the SRU start page (rarely needed):
+Optional start page:
 
 ```bash
 python run_local.py --keywords biodiversity conservation --start-page 1
 ```
 
-You’ll see progress logs like:
+Note: You can adjust batch size and total items by editing `publisher_settings.py` → `BATCH_SIZE`, `MAX_ARTICLES` .
+
+You’ll see logs like:
 
 ```
 🚀 [START] Processing Wiley Library via SRU...
+[CONFIG] MAX_ARTICLES=... | BATCH_SIZE=... | Keywords=['climate', 'action']
 [PAGE] Fetching SRU records → startRecord=1 | batch_size=...
-[LOCAL : PDF saved] downloads/Wiley Library/climate_action/2020av000271.pdf | size=... bytes | DOI=10.1029/2020av000271
-[DB INSERT ✅] DOI=10.1029/2020av000271
-...
-✅ Done. Inserted/processed: 25. Next page pointer: 51
+Filtering open-access resources only -->
+[LOCAL : PDF saved] .../downloads/WileyLibrary_<hash>.pdf | size=... bytes
+[SUMMARY] Page processed. Total so far: 1/...
+✅ [DONE] Processed 1 open-access articles in 0.8s (last page=2)
+```
+
+All PDFs land in:
+
+```
+./downloads/<filename>.pdf
 ```
 
 ---
 
 ## How it works (high level)
 
-1. **SRU query** is constructed against:
-
-   ```
-   https://onlinelibrary.wiley.com/action/sru
-   ```
-
-   using DC/PRISM metadata; keywords are applied to `dc.title` and `dc.description`.
-
-2. **Open Access filter** is applied from the SRU response (and by trying the PDF URL).
-
-3. **PDF download** uses `cloudscraper/requests` with browsery headers to reduce 403s.
-
-4. **Author/email extraction** parses the first page text with `PyPDF2` and a simple regex heuristic.
-
-5. **Dedup check** compares a SHA-256 hash of `"{doi} {title}"` via `tiquu_pg/select_query.py`.
-
-6. **Insert (optional)** writes a row to `web_crawler_journals` via `tiquu_pg/insert_query.py`.
+1. Build a Wiley SRU query for your keywords.
+2. Fetch a page of records; normalize essential fields (DOI, title, landing URL, subjects, year).
+3. Keep only Open-Access items.
+4. Resolve a PDF URL and download it (using `cloudscraper/requests`).
+5. Extract a principal author/email (best-effort heuristic).
+6. Save the PDF to `./downloads/` using `utils.save_pdf()`.
 
 ---
 
-## Notes & Tips
+## Testing
 
-* **Wiley SRU quirks**: we send Chrome-like headers; short pauses are built-in to avoid rate spikes.
-* **Heuristic email extraction**: it’s pragmatic, not perfect. It scans for an email on the first page and tries to capture the preceding name.
-* **DB schema**: `insert_query.py` expects a table named `web_crawler_journals` with fields seen in that file (e.g., `hash_value, journal_name, doi, authors, author_email, title, source_url, keywords, topic, publisher_name, year`).
-* **No API key**: for Wiley, `config_utils.get_api_config()` returns an empty key by design.
-* **Testing**: several tests mock DB and network calls; you can run `pytest`.
+Run the test suite:
+
+```bash
+pytest -v -s
+```
+
+Tests use `monkeypatch`/mocks so:
+
+* No network calls are made
+* No DB is required
+* File writes go to temporary locations during tests
+
 
 ---
 
 ## License
 
-MIT (you can change this to suit your needs).
-
----
-
-## Changelog
-
-* **v2 (local)**: Removed AWS (Lambda, SSM/SecretsManager, S3). Added local runner and filesystem output.
-* **v1 (legacy)**: AWS Lambda + S3 uploads.
-
----
-
-If you want, I can also generate the `run_local.py` and `db.local.yaml.example` files exactly as above and drop them into your repo structure—just say the word.
+MIT

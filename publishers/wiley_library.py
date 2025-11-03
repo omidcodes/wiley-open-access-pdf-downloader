@@ -1,7 +1,6 @@
 from io import BytesIO
 import cloudscraper
 from publisher_settings import BATCH_SIZE, MAX_ARTICLES, PUBLISHER_NAME_FOR_DB
-from hash_func import hashify
 import requests
 from pypdf import PdfReader
 import re
@@ -9,7 +8,7 @@ import time
 from lxml import etree
 from typing import Any, Dict, List, Optional, Tuple
 
-from utils import save_pdf
+from utils import save_pdf, hashify
 
 
 # -----------------------------

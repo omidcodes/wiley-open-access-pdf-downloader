@@ -3,7 +3,7 @@ import cloudscraper
 from publisher_settings import BATCH_SIZE, MAX_ARTICLES, PUBLISHER_NAME_FOR_DB
 from hash_func import hashify
 import requests
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 import re
 import time
 from lxml import etree
@@ -385,24 +385,30 @@ def process_wiley_library(
                 topic = subjects_list[0] if subjects_list else ""
 
                 # # Prepare DB record (align fields with other adapters)
-                # article_data = {
-                #     'title': title,
-                #     'doi': doi,
-                #     'year': year,
-                #     'source_url': build_download_pdf_url_from_doi_for_wiley(doi=doi) or "",  # download URL
+                article_data = {
+                    'title': title,
+                    'doi': doi,
+                    'year': year,
+                    'source_url': build_download_pdf_url_from_doi_for_wiley(doi=doi) or "",  # download URL
 
-                #     'landing_url': record.get("landing_url") or "", # landing page URL which is not a direct download URL.
-                #     'calc_hash': calc_hash,
-                #     'authors': principal_author,
-                #     'author_email': author_email,
-                #     'keywords': ','.join(subjects_list) if isinstance(subjects_list, list) else "",
+                    'landing_url': record.get("landing_url") or "", # landing page URL which is not a direct download URL.
+                    'calc_hash': calc_hash,
+                    'authors': principal_author,
+                    'author_email': author_email,
+                    'keywords': ','.join(subjects_list) if isinstance(subjects_list, list) else "",
 
-                #     'journal_name': PUBLISHER_NAME_FOR_DB,
-                #     'publisher_name': PUBLISHER_NAME_FOR_DB,
+                    'journal_name': PUBLISHER_NAME_FOR_DB,
+                    'publisher_name': PUBLISHER_NAME_FOR_DB,
 
-                #     # Map 'topic' to first subject if available
-                #     'topic': topic,
-                # }
+                    # Map 'topic' to first subject if available
+                    'topic': topic,
+                    'saved_as' : pdf_name,
+                }
+
+
+                processed_articles.append(article_data)
+
+                total_processed += 1
 
                 # insert_result = insert_query.insert_record('INSERT', **article_data)
                 # if insert_result == "success":

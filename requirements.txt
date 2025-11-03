@@ -1,0 +1,5 @@
+xmltodict
+requests
+lxml
+cloudscraper
+pytest
